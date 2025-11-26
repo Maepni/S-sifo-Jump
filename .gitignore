@@ -1,0 +1,41 @@
+# Unity generados
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Mm]emoryCaptures/
+UserSettings/
+
+# Archivos de IDE
+*.csproj
+*.sln
+*.user
+*.pidb
+*.suo
+*.userprefs
+*.unityproj
+*.tmp
+*.svd
+
+# Sistema
+.DS_Store
+*.swp
+*.bak
+*.tmp
+*.log
+
+# Crash reports
+sysinfo.txt
+
+# Visual Studio Code
+.vscode/
+
+# Rider
+.idea/
+*.iml
+
+# Otros
+*.apk
+*.aab
