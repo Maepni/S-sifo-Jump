@@ -79,75 +79,13 @@ public class CircularSineWave : MonoBehaviour
     void CheckPlayerPass()
     {
         if (passedPlayer) return;
-        if (ScoreManager.Instance == null) return;
-        if (ScoreManager.Instance.player == null) return;
-        // Impedir score si la onda recién apareció (protege contra spawns alineados)
+
+        // Impedir que detecte inmediatamente al aparecer
         float traveled = Mathf.Abs(Mathf.DeltaAngle(initialAngle, currentAngle));
         if (traveled < minAngleBeforeScoring)
             return;
 
-        // --- ÁNGULO DEL JUGADOR (0..360) ---
-        Vector3 dir = (ScoreManager.Instance.player.position - center.position).normalized;
-        float playerAngle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
-
-        // ============================================================
-        // 1) BUSCAR EL PUNTO DE LA ONDA MÁS CERCANO A ESE ÁNGULO
-        //    USANDO positions[] QUE ES LA FORMA REAL DEL COLLIDER
-        // ============================================================
-        int bestIndex = -1;
-        float bestDiff = float.MaxValue;
-
-        for (int i = 0; i < points; i++)
-        {
-            float t = (float)i / (points - 1);
-            float angleDeg = t * angleSpan;
-
-            float d = Mathf.Abs(Mathf.DeltaAngle(angleDeg, playerAngle));
-            if (d < bestDiff)
-            {
-                bestDiff = d;
-                bestIndex = i;
-            }
-        }
-
-        // si todavía está lejos angularmente, no hacemos nada
-        if (bestIndex < 0 || bestDiff > passThreshold)
-            return;
-
-        // ============================================================
-        // 2) RADIO REAL DE LA ONDA EN LA DIRECCIÓN DEL JUGADOR
-        //    (positions está en coordenadas LOCALES respecto al centro)
-        // ============================================================
-        float waveR = positions[bestIndex].magnitude;
-
-        // ============================================================
-        // 3) RADIO REAL DEL JUGADOR
-        // ============================================================
-        float playerR = (ScoreManager.Instance.player.position - center.position).magnitude;
-
-        bool alreadyOverlappingRadially = playerR <= waveR;
-
-        // Nos aseguramos de que solo se procese UNA vez esta onda
         passedPlayer = true;
-
-        var ctrl = GetComponent<WaveController>();
-
-        // Si radialmente ya está dentro del pulso, consideramos que GOLPEA,
-        // así que NO damos score.
-        if (alreadyOverlappingRadially)
-        {
-            if (ctrl != null)
-                ctrl.hitPlayer = true;
-
-            return;
-        }
-
-        // Si NO golpeó (ni radialmente ni por hit previo), entonces damos score
-        if (ctrl != null && !ctrl.hitPlayer)
-        {
-            ScoreManager.Instance.RegisterWaveEvaded();
-        }
     }
-
 
 }

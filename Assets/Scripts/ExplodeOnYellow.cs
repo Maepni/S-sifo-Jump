@@ -90,10 +90,6 @@ public class ExplodeOnYellow : MonoBehaviour
             explosion.Play();
         }
 
-        // REGISTRO DE MUERTE PARA SCORE
-        if (ScoreManager.Instance != null)
-            ScoreManager.Instance.RegisterSawDeath();
-
         // 5) destruir el jugador
         Destroy(gameObject);
 

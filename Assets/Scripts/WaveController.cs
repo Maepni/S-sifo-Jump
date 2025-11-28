@@ -14,16 +14,4 @@ public class WaveController : MonoBehaviour
 
         Destroy(gameObject, lifetime);
     }
-
-    void OnEnable()
-    {
-        if (ScoreManager.Instance != null)
-            ScoreManager.Instance.RegisterWave(transform);
-    }
-
-    void OnDestroy()
-    {
-        if (ScoreManager.Instance != null)
-            ScoreManager.Instance.UnregisterWave(transform);
-    }
 }

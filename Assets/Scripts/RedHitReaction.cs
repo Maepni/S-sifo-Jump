@@ -75,10 +75,6 @@ public class RedHitReaction : MonoBehaviour
 
         if (Time.time - lastHitTime < hitCooldown)
             return;
-
-        // MARCAR GOLPE PARA EL SISTEMA DE SCORE
-        if (ScoreManager.Instance != null)
-            ScoreManager.Instance.RegisterWaveHit();
             
         var ctrl = other.GetComponentInParent<WaveController>();
         if (ctrl != null)
