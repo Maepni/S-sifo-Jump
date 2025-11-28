@@ -139,18 +139,15 @@ public class RedHitReaction : MonoBehaviour
 
     float GetCurrentAngle()
     {
-        Vector3 dir = (transform.position - center.position).normalized;
-        return Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+        return redJump.angle;
     }
+
 
     void UpdatePositionFromAngle(float angle)
     {
-        float rad = angle * Mathf.Deg2Rad;
-        float r = (transform.position - center.position).magnitude;
-
-        Vector3 newPos = center.position + new Vector3(Mathf.Cos(rad), Mathf.Sin(rad), 0f) * r;
-        transform.position = newPos;
+        redJump.angle = angle;
     }
+
 
     float NormalizeAngle(float angle)
     {

@@ -3,20 +3,20 @@ using UnityEngine;
 public class RedJump : MonoBehaviour
 {
     [Header("Center Reference")]
-    public Transform center;      // círculo azul
+    public Transform center;
 
-    [Header("Jump Levels (distancia radial extra)")]
+    [Header("Jump Levels")]
     public float smallJump = 50f;
     public float mediumJump = 110f;
     public float bigJump = 180f;
 
     [Header("Charge Settings")]
-    public float chargeSpeed = 200f;   // qué tan rápido se carga
-    public float maxCharge = 180f;     // límite de carga
+    public float chargeSpeed = 200f;
+    public float maxCharge = 180f;
 
     [Header("Movement Settings")]
-    public float returnSpeed = 300f;   // qué tan rápido cae
-    public float jumpSmooth = 8f;      // suavidad de subida
+    public float returnSpeed = 300f;
+    public float jumpSmooth = 8f;
 
     [Header("Squash & Stretch")]
     public Vector3 idleScale = new Vector3(1f, 1f, 1f);
@@ -27,97 +27,84 @@ public class RedJump : MonoBehaviour
     public float scaleSpeed = 15f;
 
     [Header("Jump Buffering")]
-    public float jumpBufferTime = 0.12f;  // 120 ms recomendado
+    public float jumpBufferTime = 0.12f;
     float jumpBufferCounter = 0f;
 
     [Header("Control Lock")]
     public bool controlsLocked = false;
 
-
-
-    // estado radial
+    // Estado radial
+    public float angle;      // << nuevo: el ángulo lo controla RedHitReaction
     float baseRadius;
-    float currentRadius;
+    public float currentRadius;
     float targetRadius;
 
-    // estado de salto / suelo
+    // Estado de salto
     float charge = 0f;
     bool isCharging = false;
     bool isJumping = false;
     bool isReturning = false;
     bool isGrounded = true;
-    int lastJumpLevel = 0; 
+    int lastJumpLevel = 0;
 
     void Start()
     {
-        if (center == null)
-        {
-            Debug.LogWarning("RedJump: asigna el Transform del círculo azul en 'center'.");
-            enabled = false;
-            return;
-        }
-
         baseRadius = Vector3.Distance(transform.position, center.position);
         currentRadius = baseRadius;
         targetRadius = baseRadius;
 
-        // orientación inicial correcta
-        UpdateOrientation();
+        // Inicializa ángulo exacto sin depender de la posición bruta
+        Vector3 dir = (transform.position - center.position).normalized;
+        angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
     }
-    
+
     void Update()
     {
-        if (controlsLocked)
-            return;
+        if (controlsLocked) return;
 
         UpdateGrounded();
         HandleInput();
         UpdateJump();
+        UpdatePosition();   // << nuevo
         UpdateOrientation();
         UpdateScale();
     }
 
+    // ----- Actualización suave de la posición -----
+    void UpdatePosition()
+    {
+        float rad = angle * Mathf.Deg2Rad;
+        Vector3 offset = new Vector3(Mathf.Cos(rad), Mathf.Sin(rad),0f) * currentRadius;
 
-    // ---------- ESTADO DE SUELO ----------
+        transform.position = center.position + offset;
+    }
+
     void UpdateGrounded()
     {
-        // está en el suelo si está en el radio base y no está saltando ni volviendo
         bool nearBase = Mathf.Abs(currentRadius - baseRadius) < 0.5f;
         isGrounded = nearBase && !isJumping && !isReturning;
     }
 
-    // ---------- INPUT ----------
     void HandleInput()
     {
-        // sólo empezamos a cargar si estamos en el suelo
-        // registrar pulsación en el buffer
         if (Input.GetKeyDown(KeyCode.Space))
-        {
             jumpBufferCounter = jumpBufferTime;
-        }
 
-        // si está cargando desde el buffer y toca suelo, iniciar carga
         if (jumpBufferCounter > 0f && isGrounded && !isCharging)
         {
             charge = 0f;
             isCharging = true;
-            jumpBufferCounter = 0f; // consumir buffer
+            jumpBufferCounter = 0f;
         }
 
-
-        // mientras mantenemos espacio y sigamos en el suelo, cargamos
-        // cargar aunque esté apenas en el aire si se empezó del buffer
         if (isCharging && Input.GetKey(KeyCode.Space))
         {
             charge += chargeSpeed * Time.deltaTime;
             charge = Mathf.Clamp(charge, 0f, maxCharge);
         }
 
-
-        // al soltar, si estábamos cargando, decidimos el nivel de salto
         if (isCharging && Input.GetKeyUp(KeyCode.Space))
         {
-            // solo saltar si estamos en el piso
             if (isGrounded)
             {
                 isCharging = false;
@@ -125,14 +112,12 @@ public class RedJump : MonoBehaviour
             }
             else
             {
-                // suelta espacio en aire → cancela carga PERO no salta
                 isCharging = false;
                 charge = 0f;
             }
         }
     }
 
-    // ---------- ELEGIR NIVEL DE SALTO ----------
     void DecideJumpLevel()
     {
         isJumping = true;
@@ -155,13 +140,10 @@ public class RedJump : MonoBehaviour
         }
     }
 
-
-    // ---------- LÓGICA DEL SALTO ----------
     void UpdateJump()
     {
         if (isJumping)
         {
-            // subir suave hacia el radio objetivo
             currentRadius = Mathf.Lerp(currentRadius, targetRadius, jumpSmooth * Time.deltaTime);
 
             if (Mathf.Abs(currentRadius - targetRadius) < 1f)
@@ -172,87 +154,63 @@ public class RedJump : MonoBehaviour
         }
         else if (isReturning)
         {
-            // bajar rápido hacia el radio base
             currentRadius = Mathf.MoveTowards(currentRadius, baseRadius, returnSpeed * Time.deltaTime);
 
             if (Mathf.Abs(currentRadius - baseRadius) < 0.05f)
             {
                 currentRadius = baseRadius;
                 isReturning = false;
-
-                // efecto de impacto
                 TriggerCameraShake();
-                lastJumpLevel = 0;
             }
         }
-
-        // actualizar posición radial
-        Vector3 radialDir = (transform.position - center.position).normalized;
-        transform.position = center.position + radialDir * currentRadius;
     }
 
-    // ---------- ORIENTACIÓN (para que el squash siga el círculo) ----------
     void UpdateOrientation()
     {
-        if (center == null) return;
-        Vector3 radialDir = (transform.position - center.position).normalized;
-        transform.up = radialDir;    // el eje Y local apunta hacia afuera del círculo azul
+        float rad = angle * Mathf.Deg2Rad;
+        Vector3 radialDir = new Vector3(Mathf.Cos(rad), Mathf.Sin(rad), 0f);
+        transform.up = radialDir;
     }
 
-    // ---------- SQUASH & STRETCH ----------
     void UpdateScale()
     {
         Vector3 targetScale = idleScale;
 
         if (isCharging && isGrounded)
-        {
             targetScale = chargeScale;
-        }
         else if (isJumping)
-        {
             targetScale = jumpStretchScale;
-        }
         else if (isReturning)
         {
-            // cerca del pico o cerca del suelo
             if (Mathf.Abs(currentRadius - targetRadius) < 3f)
                 targetScale = peakSquashScale;
             else if (Mathf.Abs(currentRadius - baseRadius) < 0.3f)
                 targetScale = landingSquashScale;
         }
 
-        transform.localScale = Vector3.Lerp(transform.localScale, targetScale, scaleSpeed * Time.deltaTime);
+        transform.localScale =
+            Vector3.Lerp(transform.localScale, targetScale, scaleSpeed * Time.deltaTime);
     }
-    void TriggerCameraShake()
-    {
-        // solo temblar si es salto grande
-        if (lastJumpLevel != 3)
-            return;
 
-        if (Camera.main == null) 
-            return;
-
-        CameraShake cam = Camera.main.GetComponent<CameraShake>();
-        if (cam == null) 
-            return;
-
-        cam.Shake(0.10f, 2.5f); 
-    }
     public void InterruptJump()
     {
-        // si no está saltando, no hacer nada
         if (!isJumping) return;
 
-        // cortar salto inmediatamente
         isJumping = false;
         isReturning = true;
-
-        // regresar hacia el radio base
         targetRadius = baseRadius;
-
-        // cancelar carga
         isCharging = false;
         charge = 0f;
+    }
+
+    void TriggerCameraShake()
+    {
+        if (lastJumpLevel != 3) return;
+        if (Camera.main == null) return;
+
+        CameraShake cam = Camera.main.GetComponent<CameraShake>();
+        if (cam != null)
+            cam.Shake(0.10f, 2.5f);
     }
 
 }
