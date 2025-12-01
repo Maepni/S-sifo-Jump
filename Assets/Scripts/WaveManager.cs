@@ -15,10 +15,11 @@ public class WaveManager : MonoBehaviour
     public float recoveryTime = 0.8f;   // mínimo tras un hit
 
     private float[] spectrum = new float[512];
+    private float[] samples  = new float[256];   // por si lo quieres usar fuera de WebGL
     private float lastSpawnTime = -999f;
-    
+
     [Header("Spawn Angle")]
-    public float spawnAngle = 40f;   // 0 = derecha, 90 = arriba, etc.  
+    public float spawnAngle = 40f;   // 0 = derecha, 90 = arriba, etc.
 
     [Header("Speed Settings")]
     public float minSpeed = 20f;
@@ -34,8 +35,8 @@ public class WaveManager : MonoBehaviour
     public float mediumThreshold = 0.015f;
     public float largeThreshold = 0.045f;
 
-    // ---------- Beat detection con historial ----------
-    [Header("Beat Detection")]
+    // ---------- Beat detection con historial (NO WebGL) ----------
+    [Header("Beat Detection (no WebGL)")]
     public int historyLength = 43;         // muestras para promedio (~0.5 s)
     public float beatMultiplier = 1.4f;    // energía vs promedio
     public float minBeatEnergy = 0.002f;   // energía mínima para considerar beat
@@ -52,6 +53,12 @@ public class WaveManager : MonoBehaviour
     private bool historyFilled = false;
     private bool beatLatched = false;
 
+    // ---------- Fallback WebGL por timeline ----------
+    [Header("WebGL Fallback")]
+    public float bpm = 135f;           // tu tema está a 135 BPM
+    public float beatsPerWave = 1f;    // 1 = cada negra, 0.5 = cada 2 negras, etc.
+    private float nextWaveTime = -1f;  // solo se usa en WebGL
+
     void Start()
     {
         energyHistory = new float[historyLength];
@@ -62,10 +69,52 @@ public class WaveManager : MonoBehaviour
         if (!audioSource || !audioSource.isPlaying)
             return;
 
-        // 1) FFT
+#if UNITY_WEBGL && !UNITY_EDITOR
+        UpdateWebGLTimeline();
+#else
+        UpdateWithFFT();
+#endif
+    }
+
+    // ============================================================
+    //   MODO WEBGL: sin FFT, solo timeline por BPM
+    // ============================================================
+    void UpdateWebGLTimeline()
+    {
+        float t = audioSource.time;
+        if (t < songStartDelay)
+            return;
+
+        if (nextWaveTime < 0f)
+        {
+            // primera vez que entramos: empezamos alineados
+            float beatInterval = 60f / bpm;
+            nextWaveTime = Mathf.Ceil((t - songStartDelay) / beatInterval) * beatInterval + songStartDelay;
+        }
+
+        float elapsed = Time.time - lastSpawnTime;
+        bool enoughTime = elapsed >= Mathf.Max(minInterval, recoveryTime);
+
+        if (t >= nextWaveTime && enoughTime)
+        {
+            // energía falsa fija; solo la usamos para mapear amplitud si quieres
+            float fakeEnergy = 0.02f;
+            SpawnWave(fakeEnergy);
+
+            float beatInterval = 60f / bpm;
+            nextWaveTime += beatInterval * beatsPerWave;
+        }
+    }
+
+    // ============================================================
+    //   MODO NORMAL (Editor / Standalone): tu detector por audio
+    // ============================================================
+    void UpdateWithFFT()
+    {
+        // FFT desde el AudioSource (Editor / PC)
         audioSource.GetSpectrumData(spectrum, 0, FFTWindow.BlackmanHarris);
 
-        // 2) Energía (graves + algo de medios)
+        // Energía (graves + algo de medios)
         float energy =
             spectrum[1] * 5f +
             spectrum[2] * 7f +
@@ -77,7 +126,7 @@ public class WaveManager : MonoBehaviour
             spectrum[40] * 2f +
             spectrum[60] * 1.5f;
 
-        // 3) Historial: si aún no hay datos, solo llenamos y salimos
+        // Historial: si aún no hay datos, solo llenamos y salimos
         int count = historyFilled ? historyLength : historyIndex;
         if (count == 0)
         {
@@ -91,7 +140,7 @@ public class WaveManager : MonoBehaviour
             return;
         }
 
-        // 4) Promedio del historial (energía de contexto)
+        // Promedio del historial (energía de contexto)
         float avg = 0f;
         for (int i = 0; i < count; i++)
             avg += energyHistory[i];
@@ -99,7 +148,7 @@ public class WaveManager : MonoBehaviour
 
         float delta = energy - avg;
 
-        // 5) Guardar energía actual en la cola circular
+        // Guardar energía actual en la cola circular
         energyHistory[historyIndex] = energy;
         historyIndex++;
         if (historyIndex >= historyLength)
@@ -108,20 +157,20 @@ public class WaveManager : MonoBehaviour
             historyFilled = true;
         }
 
-        // 6) No permitir beats hasta que la canción lleve un rato
+        // No permitir beats hasta que la canción lleve un rato
         if (audioSource.time < songStartDelay)
             return;
 
-        // 7) Condición de beat “en bruto”
+        // Condición de beat “en bruto”
         bool rawBeat =
             energy > avg * beatMultiplier &&
             energy > minBeatEnergy &&
-            delta > minBeatDelta;
+            delta  > minBeatDelta;
 
         float elapsed = Time.time - lastSpawnTime;
         bool enoughTime = elapsed >= Mathf.Max(minInterval, recoveryTime);
 
-        // 8) Latch: solo un beat mientras la energía está alta
+        // Latch: solo un beat mientras la energía está alta
         if (!beatLatched)
         {
             if (rawBeat && enoughTime)
@@ -140,6 +189,9 @@ public class WaveManager : MonoBehaviour
         }
     }
 
+    // ============================================================
+    //   SPAWN DE LA ONDA (IGUAL QUE YA TENÍAS)
+    // ============================================================
     void SpawnWave(float energy)
     {
         if (!sineWavePrefab || !center)
@@ -155,11 +207,9 @@ public class WaveManager : MonoBehaviour
         {
             s.center = center;
             s.radius = radius;
-
-            // Empieza en la derecha (0°)
             s.SetStartAngle(spawnAngle);
 
-            // Amplitud según energía
+            // Amplitud según energía (en WebGL la energía es fake pero funciona igual)
             float amp;
             if (energy < mediumThreshold)
             {

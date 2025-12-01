@@ -6,8 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/GetStarted_Scene.unity
-    guid: 6888813f2bd9e4521b9b1343abf0c60f
+    path: Assets/Game Foom.unity
+    guid: b4bc249551a4ea5469524326f81ed7eb
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0
