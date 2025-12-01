@@ -25,6 +25,12 @@ public class CircularSineWave : MonoBehaviour
     public float minAngleBeforeScoring = 20f;
     private float initialAngle;
 
+        public void SetStartAngle(float angleDeg)
+    {
+        currentAngle = angleDeg;
+        initialAngle = angleDeg;
+    }
+
 
     void Awake()
     {
@@ -32,9 +38,46 @@ public class CircularSineWave : MonoBehaviour
         edge = GetComponent<EdgeCollider2D>();
 
         lr.useWorldSpace = false;
+
         positions = new Vector3[points];
         lr.positionCount = points;
+
+        // --- Forma del grosor de la onda ---
+        float baseWidth = 0.95f;   // grosor máximo del pico
+        float thinWidth = 0.02f;  // grosor de la línea fina en los extremos
+
+        AnimationCurve widthCurve = new AnimationCurve();
+        widthCurve.AddKey(0.00f, thinWidth);   // fino desde el inicio
+        widthCurve.AddKey(0.45f, thinWidth);   // sigue fino
+        widthCurve.AddKey(0.50f, baseWidth);   // pico muy concentrado
+        widthCurve.AddKey(0.55f, thinWidth);   // vuelve a fino rápido
+        widthCurve.AddKey(1.00f, thinWidth);   // fino hasta el final
+
+        lr.widthCurve = widthCurve;
+
+        // --- Gradiente de color/alpha ---
+        Gradient gradient = new Gradient();
+
+        gradient.SetKeys(
+            new GradientColorKey[]
+            {
+                new GradientColorKey(new Color(0f, 1f, 1f), 0.0f),
+                new GradientColorKey(new Color(0f, 1f, 1f), 1.0f)
+            },
+            new GradientAlphaKey[]
+            {
+                // extremos semi-transparentes, centro opaco
+                new GradientAlphaKey(0.1f, 0.0f),
+                new GradientAlphaKey(1.00f, 0.3f),
+                new GradientAlphaKey(1.00f, 0.7f),
+                new GradientAlphaKey(0.1f, 1.0f)
+            }
+        );
+
+        lr.colorGradient = gradient;
     }
+
+
     void Update()
     {
         if (!center) return;

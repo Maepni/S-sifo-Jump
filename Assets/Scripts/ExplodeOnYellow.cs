@@ -39,16 +39,18 @@ public class ExplodeOnYellow : MonoBehaviour
         // 1) bloquear control y salto
         if (redJump != null)
         {
-            redJump.InterruptJump();      // corta un salto en curso
+            redJump.InterruptJump();
             redJump.controlsLocked = true;
         }
 
-        // 2) desactivar reacciones de golpes para que no mueva la posición
+        // 2) desactivar reacciones de golpes
         if (redHit != null)
         {
             redHit.enabled = false;
         }
 
+        // (aquí ya NO llamamos a PlayerDeath)
+        
         // 3) vibración del cuerpo y cámara
         Vector3 basePos = transform.position;
         float t = 0f;
@@ -58,11 +60,9 @@ public class ExplodeOnYellow : MonoBehaviour
             t += Time.deltaTime;
             float normalized = Mathf.Clamp01(t / preBreakDuration);
 
-            // vibración del cuerpo alrededor de su punto
             Vector2 offset = Random.insideUnitCircle * bodyShakeAmount * (1f - normalized);
             transform.position = basePos + (Vector3)offset;
 
-            // vibración de la cámara, intensidad creciente
             if (useCameraShake && Camera.main != null)
             {
                 CameraShake cam = Camera.main.GetComponent<CameraShake>();
@@ -76,10 +76,13 @@ public class ExplodeOnYellow : MonoBehaviour
             yield return null;
         }
 
-        // aseguramos que vuelva al punto base justo antes de explotar
         transform.position = basePos;
 
-        // 4) explosión de partículas
+        // 4) AHORA sí avisamos al manager para que empiece el fade + restart
+        if (GameRhythmManager.Instance != null)
+            GameRhythmManager.Instance.PlayerDeath();
+
+        // 5) explosión de partículas
         if (explosionPrefab != null)
         {
             ParticleSystem explosion = Instantiate(
@@ -90,8 +93,7 @@ public class ExplodeOnYellow : MonoBehaviour
             explosion.Play();
         }
 
-        // 5) destruir el jugador
+        // 6) destruir el jugador
         Destroy(gameObject);
-
     }
 }
