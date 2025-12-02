@@ -5364,25 +5364,19 @@ MonoBehaviour:
   sineWavePrefab: {fileID: 4270087220976437172, guid: 285490e04f4c55844b8fddccdfc6d055, type: 3}
   center: {fileID: 1465353453}
   radius: 530
-  minInterval: 0.3
-  recoveryTime: 0.05
   spawnAngle: 40
-  minSpeed: 15
-  maxSpeed: 120
-  bassSpeedScale: 50
-  smallAmplitude: 70
-  mediumAmplitude: 90
-  largeAmplitude: 130
-  mediumThreshold: 1
-  largeThreshold: 2
-  historyLength: 43
-  beatMultiplier: 1.4
-  minBeatEnergy: 0.2
-  minBeatDelta: 0.1
+  minInterval: 0.43
+  recoveryTime: 0.35
   songStartDelay: 1.5
-  beatReleaseMultiplier: 1.5
-  bpm: 136
-  beatsPerWave: 1
+  smallAmplitude: 80
+  mediumAmplitude: 110
+  largeAmplitude: 120
+  baseSpeed: 75
+  speedEnergyMin: 0.8
+  speedEnergyMax: 0.8
+  beatJson: {fileID: 4900000, guid: d0f0828e69b794746b870713beb9e387, type: 3}
+  minEnergyToSpawn: 0.13
+  minBeatsBetweenSpawns: 1
 --- !u!1 &908993776
 GameObject:
   m_ObjectHideFlags: 0
@@ -10878,8 +10872,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TextBanner
   banner: {fileID: 1013889604}
-  offScreenRight: {x: 600, y: 230}
-  onScreen: {x: 140, y: 230}
+  offScreenRight: {x: 600, y: 200}
+  onScreen: {x: 160, y: 200}
   moveDuration: 8
   stayDuration: 2
   interval: 15

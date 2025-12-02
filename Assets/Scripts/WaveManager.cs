@@ -10,198 +10,105 @@ public class WaveManager : MonoBehaviour
     public Transform center;
     public float radius = 300f;
 
-    [Header("Spawn Control")]
-    public float minInterval = 0.35f;   // mínimo entre ondas
-    public float recoveryTime = 0.8f;   // mínimo tras un hit
-
-    private float[] spectrum = new float[512];
-    private float[] samples  = new float[256];   // por si lo quieres usar fuera de WebGL
-    private float lastSpawnTime = -999f;
-
     [Header("Spawn Angle")]
-    public float spawnAngle = 40f;   // 0 = derecha, 90 = arriba, etc.
+    public float spawnAngle = 55f;   // 0 = derecha, 90 = arriba, etc.
 
-    [Header("Speed Settings")]
-    public float minSpeed = 20f;
-    public float maxSpeed = 200f;
-    public float bassSpeedScale = 25f;
+    [Header("Spawn Control (tiempo)")]
+    public float minInterval = 0.25f;   // tiempo mínimo real entre ondas
+    public float recoveryTime = 0.5f;   // puedes subirlo si siguen muy juntas
+    public float songStartDelay = 0.5f; // segundos antes de empezar a lanzar ondas
 
     [Header("Amplitude Levels")]
     public float smallAmplitude = 10f;
     public float mediumAmplitude = 40f;
     public float largeAmplitude = 80f;
 
-    [Header("Amplitude Thresholds")]
-    public float mediumThreshold = 0.015f;
-    public float largeThreshold = 0.045f;
+    [Header("Speed Settings")]
+    public float baseSpeed = 80f;
+    public float speedEnergyMin = 0.8f;   // multiplicador de velocidad para energía 0
+    public float speedEnergyMax = 1.3f;   // multiplicador para energía 1
 
-    // ---------- Beat detection con historial (NO WebGL) ----------
-    [Header("Beat Detection (no WebGL)")]
-    public int historyLength = 43;         // muestras para promedio (~0.5 s)
-    public float beatMultiplier = 1.4f;    // energía vs promedio
-    public float minBeatEnergy = 0.002f;   // energía mínima para considerar beat
-    public float minBeatDelta = 0.001f;    // cambio mínimo
+    [Header("Beat Map JSON")]
+    public TextAsset beatJson;   // arrastra beat_data.json aquí
 
-    [Tooltip("Segundos desde el inicio de la pista antes de permitir ondas")]
-    public float songStartDelay = 0.6f;
+    [Header("Beat Filtering")]
+    [Range(0f, 1f)]
+    public float minEnergyToSpawn = 0.18f; // beats más débiles se ignoran
+    [Tooltip("1 = puede haber onda en cada beat; 2 = como máximo 1 cada 2 beats, etc.")]
+    public int minBeatsBetweenSpawns = 1;
 
-    [Tooltip("Cuánto debe bajar la energía para desbloquear el siguiente beat")]
-    public float beatReleaseMultiplier = 1.05f;
+    private BeatMap beatMap;
+    private int beatIndex = 0;
+    private int lastSpawnBeatIndex = -999;
 
-    private float[] energyHistory;
-    private int historyIndex = 0;
-    private bool historyFilled = false;
-    private bool beatLatched = false;
+    private float lastSpawnTime = -999f;
 
-    // ---------- Fallback WebGL por timeline ----------
-    [Header("WebGL Fallback")]
-    public float bpm = 135f;           // tu tema está a 135 BPM
-    public float beatsPerWave = 1f;    // 1 = cada negra, 0.5 = cada 2 negras, etc.
-    private float nextWaveTime = -1f;  // solo se usa en WebGL
-
-    void Start()
+    void Awake()
     {
-        energyHistory = new float[historyLength];
+        if (beatJson != null)
+        {
+            beatMap = JsonUtility.FromJson<BeatMap>(beatJson.text);
+        }
+        else
+        {
+            Debug.LogError("WaveManager: falta beatJson (beat_data.json).");
+        }
     }
 
     void Update()
     {
+        if (beatMap == null || beatMap.beats == null || beatMap.beats.Length == 0)
+            return;
+
         if (!audioSource || !audioSource.isPlaying)
             return;
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-        UpdateWebGLTimeline();
-#else
-        UpdateWithFFT();
-#endif
-    }
-
-    // ============================================================
-    //   MODO WEBGL: sin FFT, solo timeline por BPM
-    // ============================================================
-    void UpdateWebGLTimeline()
-    {
         float t = audioSource.time;
         if (t < songStartDelay)
             return;
 
-        if (nextWaveTime < 0f)
-        {
-            // primera vez que entramos: empezamos alineados
-            float beatInterval = 60f / bpm;
-            nextWaveTime = Mathf.Ceil((t - songStartDelay) / beatInterval) * beatInterval + songStartDelay;
-        }
-
         float elapsed = Time.time - lastSpawnTime;
-        bool enoughTime = elapsed >= Mathf.Max(minInterval, recoveryTime);
+        float minGap = Mathf.Max(minInterval, recoveryTime);
+        bool enoughTime = elapsed >= minGap;
 
-        if (t >= nextWaveTime && enoughTime)
+        // Recorremos beats que ya pasaron en el tiempo de la canción
+        while (beatIndex < beatMap.beats.Length &&
+               t >= beatMap.beats[beatIndex].time)
         {
-            // energía falsa fija; solo la usamos para mapear amplitud si quieres
-            float fakeEnergy = 0.02f;
-            SpawnWave(fakeEnergy);
+            float energy = beatMap.beats[beatIndex].energy;
 
-            float beatInterval = 60f / bpm;
-            nextWaveTime += beatInterval * beatsPerWave;
+            // ¿Cuántos beats han pasado desde la última onda?
+            int beatsSinceLast = beatIndex - lastSpawnBeatIndex;
+
+            // Condición para spawnear:
+            //  - energía por encima del umbral
+            //  - ha pasado el mínimo de beats desde la última
+            //  - también se respeta un gap de tiempo real
+            if (energy >= minEnergyToSpawn &&
+                beatsSinceLast >= minBeatsBetweenSpawns &&
+                enoughTime)
+            {
+                SpawnWaveFromEnergy(energy);
+                lastSpawnBeatIndex = beatIndex;
+                lastSpawnTime = Time.time;
+
+                // hasta que pase minGap, no consideramos más spawns
+                enoughTime = false;
+            }
+
+            // Aunque no spawneemos, avanzamos al siguiente beat
+            beatIndex++;
         }
     }
 
-    // ============================================================
-    //   MODO NORMAL (Editor / Standalone): tu detector por audio
-    // ============================================================
-    void UpdateWithFFT()
-    {
-        // FFT desde el AudioSource (Editor / PC)
-        audioSource.GetSpectrumData(spectrum, 0, FFTWindow.BlackmanHarris);
-
-        // Energía (graves + algo de medios)
-        float energy =
-            spectrum[1] * 5f +
-            spectrum[2] * 7f +
-            spectrum[3] * 9f +
-            spectrum[4] * 9f +
-            spectrum[5] * 7f +
-            spectrum[6] * 5f +
-            spectrum[20] * 3f +
-            spectrum[40] * 2f +
-            spectrum[60] * 1.5f;
-
-        // Historial: si aún no hay datos, solo llenamos y salimos
-        int count = historyFilled ? historyLength : historyIndex;
-        if (count == 0)
-        {
-            energyHistory[historyIndex] = energy;
-            historyIndex++;
-            if (historyIndex >= historyLength)
-            {
-                historyIndex = 0;
-                historyFilled = true;
-            }
-            return;
-        }
-
-        // Promedio del historial (energía de contexto)
-        float avg = 0f;
-        for (int i = 0; i < count; i++)
-            avg += energyHistory[i];
-        avg /= count;
-
-        float delta = energy - avg;
-
-        // Guardar energía actual en la cola circular
-        energyHistory[historyIndex] = energy;
-        historyIndex++;
-        if (historyIndex >= historyLength)
-        {
-            historyIndex = 0;
-            historyFilled = true;
-        }
-
-        // No permitir beats hasta que la canción lleve un rato
-        if (audioSource.time < songStartDelay)
-            return;
-
-        // Condición de beat “en bruto”
-        bool rawBeat =
-            energy > avg * beatMultiplier &&
-            energy > minBeatEnergy &&
-            delta  > minBeatDelta;
-
-        float elapsed = Time.time - lastSpawnTime;
-        bool enoughTime = elapsed >= Mathf.Max(minInterval, recoveryTime);
-
-        // Latch: solo un beat mientras la energía está alta
-        if (!beatLatched)
-        {
-            if (rawBeat && enoughTime)
-            {
-                SpawnWave(energy);
-                beatLatched = true;
-            }
-        }
-        else
-        {
-            // Desbloquear cuando la energía vuelve cerca del promedio
-            if (energy < avg * beatReleaseMultiplier)
-            {
-                beatLatched = false;
-            }
-        }
-    }
-
-    // ============================================================
-    //   SPAWN DE LA ONDA (IGUAL QUE YA TENÍAS)
-    // ============================================================
-    void SpawnWave(float energy)
+    void SpawnWaveFromEnergy(float energy)
     {
         if (!sineWavePrefab || !center)
             return;
 
-        lastSpawnTime = Time.time;
-
         GameObject wave = Instantiate(sineWavePrefab);
 
-        // ----- Configurar la sine wave -----
+        // ----- Geometría de la onda -----
         CircularSineWave s = wave.GetComponent<CircularSineWave>();
         if (s != null)
         {
@@ -209,34 +116,27 @@ public class WaveManager : MonoBehaviour
             s.radius = radius;
             s.SetStartAngle(spawnAngle);
 
-            // Amplitud según energía (en WebGL la energía es fake pero funciona igual)
+            // Tamaño en tres niveles claros
             float amp;
-            if (energy < mediumThreshold)
-            {
+            if (energy < 0.33f)
                 amp = smallAmplitude;
-            }
-            else if (energy < largeThreshold)
-            {
+            else if (energy < 0.66f)
                 amp = mediumAmplitude;
-            }
             else
-            {
                 amp = largeAmplitude;
-            }
 
             s.amplitude = amp;
         }
 
-        // ----- Controlador de movimiento -----
+        // ----- Movimiento -----
         WaveController w = wave.GetComponent<WaveController>();
         if (w != null)
         {
             if (s != null)
                 w.sine = s;
 
-            float energyNorm = Mathf.Clamp01(energy * bassSpeedScale);
-            float dynamicSpeed = Mathf.Lerp(minSpeed, maxSpeed, energyNorm);
-            w.speed = dynamicSpeed;
+            float speedMul = Mathf.Lerp(speedEnergyMin, speedEnergyMax, energy);
+            w.speed = baseSpeed * speedMul;
         }
     }
 }
